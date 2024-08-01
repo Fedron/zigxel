@@ -1,6 +1,7 @@
 .{
     .name = "zigxel",
     .version = "0.0.0",
+    .minimum_zig_version = "0.13.0-dev.351+64ef45eb0",
     .dependencies = .{
         .zigglgen = .{
             .url = "https://github.com/castholm/zigglgen/releases/download/v0.2.3/zigglgen.tar.gz",
