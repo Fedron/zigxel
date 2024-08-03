@@ -13,12 +13,35 @@ fn logGLFWError(error_code: glfw.ErrorCode, description: [:0]const u8) void {
 var gl_procs: gl.ProcTable = undefined;
 
 const Vertex = struct {
-    position: Position,
-    color: Color,
-
-    const Position = [3]f32;
-    const Color = [3]f32;
+    position: [3]f32,
+    color: [3]f32,
 };
+
+fn enable_vertex_attrib_pointers(comptime T: type, program: c_uint) !void {
+    const type_info = @typeInfo(T);
+
+    if (type_info != .Struct) {
+        return error.UnexpectedType;
+    }
+
+    inline for (type_info.Struct.fields) |field| {
+        const field_type = @typeInfo(field.type);
+        if (field_type != .Array) {
+            return error.UnexpectedFieldType;
+        }
+
+        const gl_equiv = switch (field_type.Array.child) {
+            i32 => gl.INT,
+            u32 => gl.UNSIGNED_INT,
+            f64 => gl.DOUBLE,
+            else => gl.FLOAT,
+        };
+
+        const attrib: c_uint = @intCast(gl.GetAttribLocation(program, field.name));
+        gl.EnableVertexAttribArray(attrib);
+        gl.VertexAttribPointer(attrib, field_type.Array.len, gl_equiv, gl.FALSE, @sizeOf(T), @offsetOf(T, field.name));
+    }
+}
 
 const quad_mesh = struct {
     // zig fmt: off
@@ -173,29 +196,7 @@ pub fn main() !void {
                 gl.STATIC_DRAW,
             );
 
-            // Instruct the VAO how vertex position data is laid out in memory.
-            const position_attrib: c_uint = @intCast(gl.GetAttribLocation(program, "position"));
-            gl.EnableVertexAttribArray(position_attrib);
-            gl.VertexAttribPointer(
-                position_attrib,
-                @typeInfo(Vertex.Position).Array.len,
-                gl.FLOAT,
-                gl.FALSE,
-                @sizeOf(Vertex),
-                @offsetOf(Vertex, "position"),
-            );
-
-            // Ditto for vertex colors.
-            const color_attrib: c_uint = @intCast(gl.GetAttribLocation(program, "color"));
-            gl.EnableVertexAttribArray(color_attrib);
-            gl.VertexAttribPointer(
-                color_attrib,
-                @typeInfo(Vertex.Color).Array.len,
-                gl.FLOAT,
-                gl.FALSE,
-                @sizeOf(Vertex),
-                @offsetOf(Vertex, "color"),
-            );
+            try enable_vertex_attrib_pointers(Vertex, program);
         }
 
         // Instruct the VAO to use our IBO, then upload index data to the IBO.
