@@ -1,6 +1,7 @@
 const std = @import("std");
 const glfw = @import("mach-glfw");
 const gl = @import("gl");
+const zm = @import("zmath");
 
 const glfw_log = std.log.scoped(.glfw);
 const gl_log = std.log.scoped(.gl);

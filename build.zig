@@ -23,6 +23,9 @@ pub fn build(b: *std.Build) void {
     const gl_bindings = @import("zigglgen").generateBindingsModule(b, .{ .api = .gl, .version = .@"4.6", .profile = .core, .extensions = &.{} });
     exe.root_module.addImport("gl", gl_bindings);
 
+    const zmath = b.dependency("zmath", .{});
+    exe.root_module.addImport("zmath", zmath.module("root"));
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
