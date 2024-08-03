@@ -33,6 +33,68 @@ const quad_mesh = struct {
     const indices = [6]u8{ 0, 1, 3, 1, 2, 3 };
 };
 
+fn create_shader_program(comptime vertex_file_path: []const u8, comptime frag_file_path: []const u8) !c_uint {
+    const vertex_shader = try create_shader(gl.VERTEX_SHADER, vertex_file_path);
+    defer gl.DeleteShader(vertex_shader);
+
+    const fragment_shader = try create_shader(gl.FRAGMENT_SHADER, frag_file_path);
+    defer gl.DeleteShader(fragment_shader);
+
+    const program = gl.CreateProgram();
+    if (program == 0) return error.CreateProgramFailed;
+    errdefer gl.DeleteProgram(program);
+
+    gl.AttachShader(program, vertex_shader);
+    gl.AttachShader(program, fragment_shader);
+    gl.LinkProgram(program);
+
+    var success: c_int = undefined;
+    var info_log_buf: [512:0]u8 = undefined;
+    gl.GetProgramiv(program, gl.LINK_STATUS, &success);
+    if (success == gl.FALSE) {
+        gl.GetProgramInfoLog(program, info_log_buf.len, null, &info_log_buf);
+        gl_log.err("{s}", .{std.mem.sliceTo(&info_log_buf, 0)});
+        return error.LinkProgramFailed;
+    }
+
+    return program;
+}
+
+const allocator = std.heap.page_allocator;
+
+fn create_shader(comptime shader_type: c_int, comptime file_path: []const u8) !c_uint {
+    const shader = gl.CreateShader(shader_type);
+    if (shader == 0) return error.CreateShaderFailed;
+
+    const shader_file = try std.fs.cwd().openFile(file_path, .{});
+    defer shader_file.close();
+
+    const file_size = try shader_file.getEndPos();
+
+    const buffer = try allocator.alloc(u8, file_size);
+    defer allocator.free(buffer);
+
+    const bytes_read = try shader_file.readAll(buffer);
+    if (bytes_read != file_size) {
+        return error.UnexpectedEOF;
+    }
+
+    const source = @as([]const u8, buffer);
+    gl.ShaderSource(shader, 1, (&source.ptr)[0..1], (&@as(c_int, @intCast(source.len)))[0..1]);
+    gl.CompileShader(shader);
+
+    var success: c_int = undefined;
+    var info_log_buf: [512:0]u8 = undefined;
+    gl.GetShaderiv(shader, gl.COMPILE_STATUS, &success);
+    if (success == gl.FALSE) {
+        gl.GetShaderInfoLog(shader, info_log_buf.len, null, &info_log_buf);
+        gl_log.err("{s}", .{std.mem.sliceTo(&info_log_buf, 0)});
+        return error.CompileShaderFailed;
+    }
+
+    return shader;
+}
+
 pub fn main() !void {
     glfw.setErrorCallback(logGLFWError);
 
@@ -73,94 +135,7 @@ pub fn main() !void {
 
     // The window and OpenGL are now both fully initialized.
 
-    const vertex_shader_source: [:0]const u8 =
-        \\#version 460 core
-        \\
-        \\// Vertex position and color as defined in the mesh.
-        \\in vec3 a_Position;
-        \\in vec3 a_Color;
-        \\
-        \\// Color result that will be passed to the fragment shader.
-        \\out vec4 v_Color;
-        \\
-        \\void main() {
-        \\    gl_Position = vec4(a_Position.xyz, 1.0);
-        \\    // Pass the vertex's color to the fragment shader.
-        \\    v_Color = vec4(a_Color.xyz, 1.0);
-        \\}
-        \\
-    ;
-    const fragment_shader_source: [:0]const u8 =
-        \\#version 460 core
-        \\
-        \\// Color input from the vertex shader.
-        \\in vec4 v_Color;
-        \\
-        \\// Fragment shaders must return an output.
-        \\out vec4 f_Color;
-        \\
-        \\void main() {
-        \\    f_Color = v_Color;
-        \\}
-        \\
-    ;
-
-    const program = create_program: {
-        var success: c_int = undefined;
-        var info_log_buf: [512:0]u8 = undefined;
-
-        const vertex_shader = gl.CreateShader(gl.VERTEX_SHADER);
-        if (vertex_shader == 0) return error.CreateVertexShaderFailed;
-        defer gl.DeleteShader(vertex_shader);
-
-        gl.ShaderSource(
-            vertex_shader,
-            1,
-            (&vertex_shader_source.ptr)[0..1],
-            (&@as(c_int, @intCast(vertex_shader_source.len)))[0..1],
-        );
-        gl.CompileShader(vertex_shader);
-        gl.GetShaderiv(vertex_shader, gl.COMPILE_STATUS, &success);
-        if (success == gl.FALSE) {
-            gl.GetShaderInfoLog(vertex_shader, info_log_buf.len, null, &info_log_buf);
-            gl_log.err("{s}", .{std.mem.sliceTo(&info_log_buf, 0)});
-            return error.CompileVertexShaderFailed;
-        }
-
-        const fragment_shader = gl.CreateShader(gl.FRAGMENT_SHADER);
-        if (fragment_shader == 0) return error.CreateFragmentShaderFailed;
-        defer gl.DeleteShader(fragment_shader);
-
-        gl.ShaderSource(
-            fragment_shader,
-            1,
-            (&fragment_shader_source.ptr)[0..1],
-            (&@as(c_int, @intCast(fragment_shader_source.len)))[0..1],
-        );
-        gl.CompileShader(fragment_shader);
-        gl.GetShaderiv(fragment_shader, gl.COMPILE_STATUS, &success);
-        if (success == gl.FALSE) {
-            gl.GetShaderInfoLog(fragment_shader, info_log_buf.len, null, &info_log_buf);
-            gl_log.err("{s}", .{std.mem.sliceTo(&info_log_buf, 0)});
-            return error.CompileFragmentShaderFailed;
-        }
-
-        const program = gl.CreateProgram();
-        if (program == 0) return error.CreateProgramFailed;
-        errdefer gl.DeleteProgram(program);
-
-        gl.AttachShader(program, vertex_shader);
-        gl.AttachShader(program, fragment_shader);
-        gl.LinkProgram(program);
-        gl.GetProgramiv(program, gl.LINK_STATUS, &success);
-        if (success == gl.FALSE) {
-            gl.GetProgramInfoLog(program, info_log_buf.len, null, &info_log_buf);
-            gl_log.err("{s}", .{std.mem.sliceTo(&info_log_buf, 0)});
-            return error.LinkProgramFailed;
-        }
-
-        break :create_program program;
-    };
+    const program = try create_shader_program("res/shader.vert.glsl", "res/shader.frag.glsl");
     defer gl.DeleteProgram(program);
 
     // Vertex Array Object (VAO), remembers instructions for how vertex data is laid out in memory.
@@ -199,7 +174,7 @@ pub fn main() !void {
             );
 
             // Instruct the VAO how vertex position data is laid out in memory.
-            const position_attrib: c_uint = @intCast(gl.GetAttribLocation(program, "a_Position"));
+            const position_attrib: c_uint = @intCast(gl.GetAttribLocation(program, "position"));
             gl.EnableVertexAttribArray(position_attrib);
             gl.VertexAttribPointer(
                 position_attrib,
@@ -211,7 +186,7 @@ pub fn main() !void {
             );
 
             // Ditto for vertex colors.
-            const color_attrib: c_uint = @intCast(gl.GetAttribLocation(program, "a_Color"));
+            const color_attrib: c_uint = @intCast(gl.GetAttribLocation(program, "color"));
             gl.EnableVertexAttribArray(color_attrib);
             gl.VertexAttribPointer(
                 color_attrib,

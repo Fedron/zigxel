@@ -4,6 +4,9 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const resources_directory = b.addInstallDirectory(.{ .source_dir = .{ .src_path = .{ .owner = b, .sub_path = "res" } }, .install_dir = .bin, .install_subdir = "res" });
+    b.getInstallStep().dependOn(&resources_directory.step);
+
     const exe = b.addExecutable(.{
         .name = "zigxel",
         .root_source_file = b.path("src/main.zig"),
