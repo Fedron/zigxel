@@ -3,6 +3,7 @@ const glfw = @import("mach-glfw");
 const gl = @import("gl");
 const zm = @import("zmath");
 
+const camera = @import("camera.zig");
 const utils = @import("utils.zig");
 
 const glfw_log = std.log.scoped(.glfw);
@@ -15,73 +16,7 @@ fn logGLFWError(error_code: glfw.ErrorCode, description: [:0]const u8) void {
 /// Procedure table that will hold loaded OpenGL functions.
 var gl_procs: gl.ProcTable = undefined;
 
-const CameraMovement = enum { Forward, Backward, Right, Left };
-
-const WORLD_UP = zm.loadArr3(.{ 0.0, 1.0, 0.0 });
-const MOVEMENT_SPEED: f32 = 2.5;
-const MOUSE_SENSITIVITY: f32 = 0.1;
-
-const Camera = struct {
-    position: zm.F32x4,
-    front: zm.F32x4,
-    up: zm.F32x4,
-    right: zm.F32x4,
-    yaw: f32,
-    pitch: f32,
-    zoom: f32,
-
-    fn new(position: ?zm.F32x4) Camera {
-        const pos = position orelse zm.loadArr3(.{ 0.0, 0.0, 0.0 });
-        return Camera{ .position = pos, .front = zm.loadArr3(.{ 0.0, 0.0, -1.0 }), .up = WORLD_UP, .right = zm.loadArr3(.{ 1.0, 0.0, 0.0 }), .yaw = -90, .pitch = 0.0, .zoom = 45.0 };
-    }
-
-    fn getViewMatrix(self: *Camera) zm.Mat {
-        return zm.lookAtRh(self.position, self.position + self.front, self.up);
-    }
-
-    fn processKeyboard(self: *Camera, direction: CameraMovement, dt: f32) void {
-        const velocity = zm.f32x4s(MOVEMENT_SPEED * dt);
-        switch (direction) {
-            .Forward => self.position += self.front * velocity,
-            .Backward => self.position -= self.front * velocity,
-            .Right => self.position += self.right * velocity,
-            .Left => self.position -= self.right * velocity,
-        }
-    }
-
-    fn processMouseMovement(self: *Camera, x_offset: f32, y_offset: f32, constrain_pitch: bool) void {
-        const xoffset = x_offset * MOUSE_SENSITIVITY;
-        const yoffset = y_offset * MOUSE_SENSITIVITY;
-
-        self.yaw += xoffset;
-        self.pitch -= yoffset;
-
-        if (constrain_pitch) {
-            self.pitch = utils.clamp(f32, self.pitch, -89.0, 89.0);
-        }
-
-        self.updateCameraVectors();
-    }
-
-    fn processMouseScroll(self: *Camera, y_offset: f32) void {
-        self.zoom -= y_offset;
-        if (self.zoom < 1.0)
-            self.zoom = 1.0;
-        if (self.zoom > 45.0)
-            self.zoom = 45.0;
-    }
-
-    fn updateCameraVectors(self: *Camera) void {
-        self.front[0] = @cos(self.yaw * utils.DEG_TO_RAD) * @cos(self.pitch * utils.DEG_TO_RAD);
-        self.front[1] = @sin(self.pitch * utils.DEG_TO_RAD);
-        self.front[2] = @sin(self.yaw * utils.DEG_TO_RAD) * @cos(self.pitch * utils.DEG_TO_RAD);
-
-        self.right = zm.normalize3(zm.cross3(self.front, WORLD_UP));
-        self.up = zm.normalize3(zm.cross3(self.right, self.front));
-    }
-};
-
-var camera = Camera.new(zm.loadArr3(.{ 0.0, 0.0, 5.0 }));
+var world_camera = camera.Camera.new(zm.loadArr3(.{ 0.0, 0.0, 5.0 }));
 var lastX: f64 = 0.0;
 var lastY: f64 = 0.0;
 var first_mouse = true;
@@ -201,16 +136,16 @@ fn processInput(window: glfw.Window) void {
     }
 
     if (glfw.Window.getKey(window, glfw.Key.w) == glfw.Action.press) {
-        camera.processKeyboard(CameraMovement.Forward, delta_time);
+        world_camera.processKeyboard(.forward, delta_time);
     }
     if (glfw.Window.getKey(window, glfw.Key.s) == glfw.Action.press) {
-        camera.processKeyboard(CameraMovement.Backward, delta_time);
+        world_camera.processKeyboard(.backward, delta_time);
     }
     if (glfw.Window.getKey(window, glfw.Key.a) == glfw.Action.press) {
-        camera.processKeyboard(CameraMovement.Left, delta_time);
+        world_camera.processKeyboard(.left, delta_time);
     }
     if (glfw.Window.getKey(window, glfw.Key.d) == glfw.Action.press) {
-        camera.processKeyboard(CameraMovement.Right, delta_time);
+        world_camera.processKeyboard(.right, delta_time);
     }
 }
 
@@ -229,14 +164,14 @@ fn mouseCallback(window: glfw.Window, xpos: f64, ypos: f64) void {
     lastX = xpos;
     lastY = ypos;
 
-    camera.processMouseMovement(@floatCast(x_offset), @floatCast(y_offset), true);
+    world_camera.processMouseMovement(@floatCast(x_offset), @floatCast(y_offset), true);
 }
 
 fn mouseScrollCallback(window: glfw.Window, xoffset: f64, yoffset: f64) void {
     _ = window;
     _ = xoffset;
 
-    camera.processMouseScroll(@floatCast(yoffset));
+    world_camera.processMouseScroll(@floatCast(yoffset));
 }
 
 fn framebufferSizeCallback(window: glfw.Window, width: u32, height: u32) void {
@@ -367,12 +302,12 @@ pub fn main() !void {
             const projection_matrix = proj: {
                 const window_size = window.getSize();
                 const aspect = @as(f32, @floatFromInt(window_size.width)) / @as(f32, @floatFromInt(window_size.height));
-                break :proj zm.perspectiveFovRhGl(camera.zoom * utils.DEG_TO_RAD, aspect, 0.1, 1000.0);
+                break :proj zm.perspectiveFovRhGl(world_camera.zoom * utils.DEG_TO_RAD, aspect, 0.1, 1000.0);
             };
             zm.storeMat(&proj, projection_matrix);
             gl.UniformMatrix4fv(gl.GetUniformLocation(program, "projection"), 1, gl.FALSE, &proj);
 
-            const view_matrix = camera.getViewMatrix();
+            const view_matrix = world_camera.getViewMatrix();
             zm.storeMat(&view, view_matrix);
             gl.UniformMatrix4fv(gl.GetUniformLocation(program, "view"), 1, gl.FALSE, &view);
 
