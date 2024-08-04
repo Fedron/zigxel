@@ -3,6 +3,8 @@ const glfw = @import("mach-glfw");
 const gl = @import("gl");
 const zm = @import("zmath");
 
+const utils = @import("utils.zig");
+
 const glfw_log = std.log.scoped(.glfw);
 const gl_log = std.log.scoped(.gl);
 
@@ -18,8 +20,6 @@ const CameraMovement = enum { Forward, Backward, Right, Left };
 const WORLD_UP = zm.loadArr3(.{ 0.0, 1.0, 0.0 });
 const MOVEMENT_SPEED: f32 = 2.5;
 const MOUSE_SENSITIVITY: f32 = 0.1;
-
-const DEG_TO_RAD = std.math.pi / 180.0;
 
 const Camera = struct {
     position: zm.F32x4,
@@ -57,10 +57,7 @@ const Camera = struct {
         self.pitch -= yoffset;
 
         if (constrain_pitch) {
-            if (self.pitch > 89.0)
-                self.pitch = 89.0;
-            if (self.pitch < -89.0)
-                self.pitch = -89.0;
+            self.pitch = utils.clamp(f32, self.pitch, -89.0, 89.0);
         }
 
         self.updateCameraVectors();
@@ -75,9 +72,9 @@ const Camera = struct {
     }
 
     fn updateCameraVectors(self: *Camera) void {
-        self.front[0] = @cos(self.yaw * DEG_TO_RAD) * @cos(self.pitch * DEG_TO_RAD);
-        self.front[1] = @sin(self.pitch * DEG_TO_RAD);
-        self.front[2] = @sin(self.yaw * DEG_TO_RAD) * @cos(self.pitch * DEG_TO_RAD);
+        self.front[0] = @cos(self.yaw * utils.DEG_TO_RAD) * @cos(self.pitch * utils.DEG_TO_RAD);
+        self.front[1] = @sin(self.pitch * utils.DEG_TO_RAD);
+        self.front[2] = @sin(self.yaw * utils.DEG_TO_RAD) * @cos(self.pitch * utils.DEG_TO_RAD);
 
         self.right = zm.normalize3(zm.cross3(self.front, WORLD_UP));
         self.up = zm.normalize3(zm.cross3(self.right, self.front));
@@ -370,7 +367,7 @@ pub fn main() !void {
             const projection_matrix = proj: {
                 const window_size = window.getSize();
                 const aspect = @as(f32, @floatFromInt(window_size.width)) / @as(f32, @floatFromInt(window_size.height));
-                break :proj zm.perspectiveFovRhGl(camera.zoom * DEG_TO_RAD, aspect, 0.1, 1000.0);
+                break :proj zm.perspectiveFovRhGl(camera.zoom * utils.DEG_TO_RAD, aspect, 0.1, 1000.0);
             };
             zm.storeMat(&proj, projection_matrix);
             gl.UniformMatrix4fv(gl.GetUniformLocation(program, "projection"), 1, gl.FALSE, &proj);
