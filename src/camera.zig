@@ -17,7 +17,7 @@ pub const Camera = struct {
     pitch: f32,
     zoom: f32,
 
-    pub fn new(position: ?zm.F32x4) Camera {
+    pub fn create(position: ?zm.F32x4) Camera {
         const pos = position orelse utils.WORLD_ORIGIN;
         return Camera{ .position = pos, .front = utils.WORLD_FRONT, .up = utils.WORLD_UP, .right = utils.WORLD_RIGHT, .yaw = -90.0, .pitch = 0.0, .zoom = 45.0 };
     }

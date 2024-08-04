@@ -4,6 +4,7 @@ const gl = @import("gl");
 const zm = @import("zmath");
 
 const camera = @import("camera.zig");
+const shader = @import("shader.zig");
 const utils = @import("utils.zig");
 
 const glfw_log = std.log.scoped(.glfw);
@@ -16,7 +17,7 @@ fn logGLFWError(error_code: glfw.ErrorCode, description: [:0]const u8) void {
 /// Procedure table that will hold loaded OpenGL functions.
 var gl_procs: gl.ProcTable = undefined;
 
-var world_camera = camera.Camera.new(zm.loadArr3(.{ 0.0, 0.0, 5.0 }));
+var world_camera = camera.Camera.create(zm.loadArr3(.{ 0.0, 0.0, 5.0 }));
 var lastX: f64 = 0.0;
 var lastY: f64 = 0.0;
 var first_mouse = true;
@@ -25,32 +26,6 @@ const Vertex = struct {
     position: [3]f32,
     color: [3]f32,
 };
-
-fn enable_vertex_attrib_pointers(comptime T: type, program: c_uint) !void {
-    const type_info = @typeInfo(T);
-
-    if (type_info != .Struct) {
-        return error.UnexpectedType;
-    }
-
-    inline for (type_info.Struct.fields) |field| {
-        const field_type = @typeInfo(field.type);
-        if (field_type != .Array) {
-            return error.UnexpectedFieldType;
-        }
-
-        const gl_equiv = switch (field_type.Array.child) {
-            i32 => gl.INT,
-            u32 => gl.UNSIGNED_INT,
-            f64 => gl.DOUBLE,
-            else => gl.FLOAT,
-        };
-
-        const attrib: c_uint = @intCast(gl.GetAttribLocation(program, field.name));
-        gl.EnableVertexAttribArray(attrib);
-        gl.VertexAttribPointer(attrib, field_type.Array.len, gl_equiv, gl.FALSE, @sizeOf(T), @offsetOf(T, field.name));
-    }
-}
 
 const quad_mesh = struct {
     // zig fmt: off
@@ -64,68 +39,6 @@ const quad_mesh = struct {
 
     const indices = [6]u8{ 0, 1, 3, 1, 2, 3 };
 };
-
-fn create_shader_program(comptime vertex_file_path: []const u8, comptime frag_file_path: []const u8) !c_uint {
-    const vertex_shader = try create_shader(gl.VERTEX_SHADER, vertex_file_path);
-    defer gl.DeleteShader(vertex_shader);
-
-    const fragment_shader = try create_shader(gl.FRAGMENT_SHADER, frag_file_path);
-    defer gl.DeleteShader(fragment_shader);
-
-    const program = gl.CreateProgram();
-    if (program == 0) return error.CreateProgramFailed;
-    errdefer gl.DeleteProgram(program);
-
-    gl.AttachShader(program, vertex_shader);
-    gl.AttachShader(program, fragment_shader);
-    gl.LinkProgram(program);
-
-    var success: c_int = undefined;
-    var info_log_buf: [512:0]u8 = undefined;
-    gl.GetProgramiv(program, gl.LINK_STATUS, &success);
-    if (success == gl.FALSE) {
-        gl.GetProgramInfoLog(program, info_log_buf.len, null, &info_log_buf);
-        gl_log.err("{s}", .{std.mem.sliceTo(&info_log_buf, 0)});
-        return error.LinkProgramFailed;
-    }
-
-    return program;
-}
-
-const allocator = std.heap.page_allocator;
-
-fn create_shader(comptime shader_type: c_int, comptime file_path: []const u8) !c_uint {
-    const shader = gl.CreateShader(shader_type);
-    if (shader == 0) return error.CreateShaderFailed;
-
-    const shader_file = try std.fs.cwd().openFile(file_path, .{});
-    defer shader_file.close();
-
-    const file_size = try shader_file.getEndPos();
-
-    const buffer = try allocator.alloc(u8, file_size);
-    defer allocator.free(buffer);
-
-    const bytes_read = try shader_file.readAll(buffer);
-    if (bytes_read != file_size) {
-        return error.UnexpectedEOF;
-    }
-
-    const source = @as([]const u8, buffer);
-    gl.ShaderSource(shader, 1, (&source.ptr)[0..1], (&@as(c_int, @intCast(source.len)))[0..1]);
-    gl.CompileShader(shader);
-
-    var success: c_int = undefined;
-    var info_log_buf: [512:0]u8 = undefined;
-    gl.GetShaderiv(shader, gl.COMPILE_STATUS, &success);
-    if (success == gl.FALSE) {
-        gl.GetShaderInfoLog(shader, info_log_buf.len, null, &info_log_buf);
-        gl_log.err("{s}", .{std.mem.sliceTo(&info_log_buf, 0)});
-        return error.CompileShaderFailed;
-    }
-
-    return shader;
-}
 
 var delta_time: f32 = 0.0;
 var last_frame: f32 = 0.0;
@@ -224,8 +137,14 @@ pub fn main() !void {
 
     // The window and OpenGL are now both fully initialized.
 
-    const program = try create_shader_program("res/shader.vert.glsl", "res/shader.frag.glsl");
-    defer gl.DeleteProgram(program);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    var arena_allocator_state = std.heap.ArenaAllocator.init(allocator);
+    defer arena_allocator_state.deinit();
+    const arena_allocator = arena_allocator_state.allocator();
+
+    var program = try shader.Program.create(arena_allocator, "res/shader.vert.glsl", "res/shader.frag.glsl");
+    defer program.destroy();
 
     // Vertex Array Object (VAO), remembers instructions for how vertex data is laid out in memory.
     // Using VAOs is strictly required in modern OpenGL.
@@ -262,7 +181,7 @@ pub fn main() !void {
                 gl.STATIC_DRAW,
             );
 
-            try enable_vertex_attrib_pointers(Vertex, program);
+            try program.enable_vertex_attrib_pointers(Vertex);
         }
 
         // Instruct the VAO to use our IBO, then upload index data to the IBO.
@@ -274,10 +193,6 @@ pub fn main() !void {
             gl.STATIC_DRAW,
         );
     }
-
-    var model: [16]f32 = undefined;
-    var view: [16]f32 = undefined;
-    var proj: [16]f32 = undefined;
 
     main_loop: while (true) {
         glfw.pollEvents();
@@ -296,7 +211,7 @@ pub fn main() !void {
             gl.ClearColor(0.2, 0.2, 0.2, 1.0);
             gl.Clear(gl.COLOR_BUFFER_BIT);
 
-            gl.UseProgram(program);
+            gl.UseProgram(program.id);
             defer gl.UseProgram(0);
 
             const projection_matrix = proj: {
@@ -304,16 +219,13 @@ pub fn main() !void {
                 const aspect = @as(f32, @floatFromInt(window_size.width)) / @as(f32, @floatFromInt(window_size.height));
                 break :proj zm.perspectiveFovRhGl(world_camera.zoom * utils.DEG_TO_RAD, aspect, 0.1, 1000.0);
             };
-            zm.storeMat(&proj, projection_matrix);
-            gl.UniformMatrix4fv(gl.GetUniformLocation(program, "projection"), 1, gl.FALSE, &proj);
+            try program.setMat4f("projection", projection_matrix);
 
             const view_matrix = world_camera.getViewMatrix();
-            zm.storeMat(&view, view_matrix);
-            gl.UniformMatrix4fv(gl.GetUniformLocation(program, "view"), 1, gl.FALSE, &view);
+            try program.setMat4f("view", view_matrix);
 
             const model_matrix = zm.identity();
-            zm.storeMat(&model, model_matrix);
-            gl.UniformMatrix4fv(gl.GetUniformLocation(program, "model"), 1, gl.FALSE, &view);
+            try program.setMat4f("model", model_matrix);
 
             gl.BindVertexArray(vao);
             defer gl.BindVertexArray(0);
