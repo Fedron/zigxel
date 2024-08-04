@@ -13,6 +13,82 @@ fn logGLFWError(error_code: glfw.ErrorCode, description: [:0]const u8) void {
 /// Procedure table that will hold loaded OpenGL functions.
 var gl_procs: gl.ProcTable = undefined;
 
+const CameraMovement = enum { Forward, Backward, Right, Left };
+
+const WORLD_UP = zm.loadArr3(.{ 0.0, 1.0, 0.0 });
+const MOVEMENT_SPEED: f32 = 2.5;
+const MOUSE_SENSITIVITY: f32 = 0.1;
+
+const DEG_TO_RAD = std.math.pi / 180.0;
+
+const Camera = struct {
+    position: zm.F32x4,
+    front: zm.F32x4,
+    up: zm.F32x4,
+    right: zm.F32x4,
+    yaw: f32,
+    pitch: f32,
+    zoom: f32,
+
+    fn new(position: ?zm.F32x4) Camera {
+        const pos = position orelse zm.loadArr3(.{ 0.0, 0.0, 0.0 });
+        return Camera{ .position = pos, .front = zm.loadArr3(.{ 0.0, 0.0, -1.0 }), .up = WORLD_UP, .right = zm.loadArr3(.{ 1.0, 0.0, 0.0 }), .yaw = -90, .pitch = 0.0, .zoom = 45.0 };
+    }
+
+    fn getViewMatrix(self: *Camera) zm.Mat {
+        return zm.lookAtRh(self.position, self.position + self.front, self.up);
+    }
+
+    fn processKeyboard(self: *Camera, direction: CameraMovement, dt: f32) void {
+        const velocity = zm.f32x4s(MOVEMENT_SPEED * dt);
+        switch (direction) {
+            .Forward => self.position += self.front * velocity,
+            .Backward => self.position -= self.front * velocity,
+            .Right => self.position += self.right * velocity,
+            .Left => self.position -= self.right * velocity,
+        }
+    }
+
+    fn processMouseMovement(self: *Camera, x_offset: f32, y_offset: f32, constrain_pitch: bool) void {
+        const xoffset = x_offset * MOUSE_SENSITIVITY;
+        const yoffset = y_offset * MOUSE_SENSITIVITY;
+
+        self.yaw += xoffset;
+        self.pitch -= yoffset;
+
+        if (constrain_pitch) {
+            if (self.pitch > 89.0)
+                self.pitch = 89.0;
+            if (self.pitch < -89.0)
+                self.pitch = -89.0;
+        }
+
+        self.updateCameraVectors();
+    }
+
+    fn processMouseScroll(self: *Camera, y_offset: f32) void {
+        self.zoom -= y_offset;
+        if (self.zoom < 1.0)
+            self.zoom = 1.0;
+        if (self.zoom > 45.0)
+            self.zoom = 45.0;
+    }
+
+    fn updateCameraVectors(self: *Camera) void {
+        self.front[0] = @cos(self.yaw * DEG_TO_RAD) * @cos(self.pitch * DEG_TO_RAD);
+        self.front[1] = @sin(self.pitch * DEG_TO_RAD);
+        self.front[2] = @sin(self.yaw * DEG_TO_RAD) * @cos(self.pitch * DEG_TO_RAD);
+
+        self.right = zm.normalize3(zm.cross3(self.front, WORLD_UP));
+        self.up = zm.normalize3(zm.cross3(self.right, self.front));
+    }
+};
+
+var camera = Camera.new(zm.loadArr3(.{ 0.0, 0.0, 5.0 }));
+var lastX: f64 = 0.0;
+var lastY: f64 = 0.0;
+var first_mouse = true;
+
 const Vertex = struct {
     position: [3]f32,
     color: [3]f32,
@@ -119,6 +195,58 @@ fn create_shader(comptime shader_type: c_int, comptime file_path: []const u8) !c
     return shader;
 }
 
+var delta_time: f32 = 0.0;
+var last_frame: f32 = 0.0;
+
+fn processInput(window: glfw.Window) void {
+    if (glfw.Window.getKey(window, glfw.Key.escape) == glfw.Action.press) {
+        _ = glfw.Window.setShouldClose(window, true);
+    }
+
+    if (glfw.Window.getKey(window, glfw.Key.w) == glfw.Action.press) {
+        camera.processKeyboard(CameraMovement.Forward, delta_time);
+    }
+    if (glfw.Window.getKey(window, glfw.Key.s) == glfw.Action.press) {
+        camera.processKeyboard(CameraMovement.Backward, delta_time);
+    }
+    if (glfw.Window.getKey(window, glfw.Key.a) == glfw.Action.press) {
+        camera.processKeyboard(CameraMovement.Left, delta_time);
+    }
+    if (glfw.Window.getKey(window, glfw.Key.d) == glfw.Action.press) {
+        camera.processKeyboard(CameraMovement.Right, delta_time);
+    }
+}
+
+fn mouseCallback(window: glfw.Window, xpos: f64, ypos: f64) void {
+    _ = window;
+
+    if (first_mouse) {
+        lastX = xpos;
+        lastY = ypos;
+        first_mouse = false;
+    }
+
+    const x_offset = xpos - lastX;
+    const y_offset = ypos - lastY;
+
+    lastX = xpos;
+    lastY = ypos;
+
+    camera.processMouseMovement(@floatCast(x_offset), @floatCast(y_offset), true);
+}
+
+fn mouseScrollCallback(window: glfw.Window, xoffset: f64, yoffset: f64) void {
+    _ = window;
+    _ = xoffset;
+
+    camera.processMouseScroll(@floatCast(yoffset));
+}
+
+fn framebufferSizeCallback(window: glfw.Window, width: u32, height: u32) void {
+    _ = window;
+    gl.Viewport(0, 0, @intCast(width), @intCast(height));
+}
+
 pub fn main() !void {
     glfw.setErrorCallback(logGLFWError);
 
@@ -129,7 +257,7 @@ pub fn main() !void {
     defer glfw.terminate();
 
     // Create our window, specifying that we want to use OpenGL.
-    const window = glfw.Window.create(1280, 720, "zigxel", null, null, .{
+    const window: glfw.Window = glfw.Window.create(1280, 720, "zigxel", null, null, .{
         .context_version_major = gl.info.version_major,
         .context_version_minor = gl.info.version_minor,
         .opengl_profile = .opengl_core_profile,
@@ -143,6 +271,11 @@ pub fn main() !void {
     // Make the window's OpenGL context current.
     glfw.makeContextCurrent(window);
     defer glfw.makeContextCurrent(null);
+
+    glfw.Window.setFramebufferSizeCallback(window, framebufferSizeCallback);
+    glfw.Window.setInputMode(window, glfw.Window.InputMode.cursor, glfw.Window.InputModeCursor.disabled);
+    glfw.Window.setCursorPosCallback(window, mouseCallback);
+    glfw.Window.setScrollCallback(window, mouseScrollCallback);
 
     // Enable VSync to avoid drawing more often than necessary.
     glfw.swapInterval(1);
@@ -210,6 +343,10 @@ pub fn main() !void {
         );
     }
 
+    var model: [16]f32 = undefined;
+    var view: [16]f32 = undefined;
+    var proj: [16]f32 = undefined;
+
     main_loop: while (true) {
         glfw.pollEvents();
 
@@ -217,12 +354,34 @@ pub fn main() !void {
         if (window.shouldClose()) break :main_loop;
 
         {
+            const current_frame: f32 = @floatCast(glfw.getTime());
+            delta_time = current_frame - last_frame;
+            last_frame = current_frame;
+
+            processInput(window);
+
             // Clear the screen to white.
             gl.ClearColor(0.2, 0.2, 0.2, 1.0);
             gl.Clear(gl.COLOR_BUFFER_BIT);
 
             gl.UseProgram(program);
             defer gl.UseProgram(0);
+
+            const projection_matrix = proj: {
+                const window_size = window.getSize();
+                const aspect = @as(f32, @floatFromInt(window_size.width)) / @as(f32, @floatFromInt(window_size.height));
+                break :proj zm.perspectiveFovRhGl(camera.zoom * DEG_TO_RAD, aspect, 0.1, 1000.0);
+            };
+            zm.storeMat(&proj, projection_matrix);
+            gl.UniformMatrix4fv(gl.GetUniformLocation(program, "projection"), 1, gl.FALSE, &proj);
+
+            const view_matrix = camera.getViewMatrix();
+            zm.storeMat(&view, view_matrix);
+            gl.UniformMatrix4fv(gl.GetUniformLocation(program, "view"), 1, gl.FALSE, &view);
+
+            const model_matrix = zm.identity();
+            zm.storeMat(&model, model_matrix);
+            gl.UniformMatrix4fv(gl.GetUniformLocation(program, "model"), 1, gl.FALSE, &view);
 
             gl.BindVertexArray(vao);
             defer gl.BindVertexArray(0);
