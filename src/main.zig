@@ -112,6 +112,10 @@ pub fn main() !void {
     gl.makeProcTableCurrent(&gl_procs);
     defer gl.makeProcTableCurrent(null);
 
+    gl.FrontFace(gl.CW);
+    gl.Enable(gl.CULL_FACE);
+    gl.CullFace(gl.BACK);
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     var arena_allocator_state = std.heap.ArenaAllocator.init(allocator);
