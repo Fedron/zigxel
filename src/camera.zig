@@ -2,7 +2,7 @@ const zm = @import("zmath");
 
 const utils = @import("utils.zig");
 
-pub const MovementDirection = enum { forward, backward, left, right };
+pub const MovementDirection = enum { forward, backward, left, right, up, down };
 
 const MOVEMENT_SPEED = 2.5;
 const MOUSE_SENSITIVITY = 0.1;
@@ -33,6 +33,8 @@ pub const Camera = struct {
             .backward => self.position -= self.front * velocity,
             .left => self.position -= self.right * velocity,
             .right => self.position += self.right * velocity,
+            .up => self.position += utils.WORLD_UP * velocity,
+            .down => self.position -= utils.WORLD_UP * velocity,
         }
     }
 

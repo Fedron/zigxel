@@ -42,6 +42,12 @@ fn processInput(window: glfw.Window) void {
     if (glfw.Window.getKey(window, glfw.Key.d) == glfw.Action.press) {
         world_camera.processKeyboard(.right, delta_time);
     }
+    if (glfw.Window.getKey(window, glfw.Key.space) == glfw.Action.press) {
+        world_camera.processKeyboard(.up, delta_time);
+    }
+    if (glfw.Window.getKey(window, glfw.Key.left_shift) == glfw.Action.press) {
+        world_camera.processKeyboard(.down, delta_time);
+    }
 }
 
 fn mouseCallback(window: glfw.Window, xpos: f64, ypos: f64) void {
@@ -175,7 +181,7 @@ pub fn main() !void {
     var program = try shader.Program.create(arena_allocator, "res/shader.vert.glsl", "res/shader.frag.glsl");
     defer program.destroy();
 
-    const quadFace = QuadFace.left.asVertices();
+    const quadFace = QuadFace.top.asVertices();
     var quad = try mesh.Mesh.init(&program, &quadFace.vertices, &quadFace.indices);
     defer quad.deinit();
 
