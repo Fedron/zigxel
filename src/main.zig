@@ -74,6 +74,56 @@ fn framebufferSizeCallback(window: glfw.Window, width: u32, height: u32) void {
     gl.Viewport(0, 0, @intCast(width), @intCast(height));
 }
 
+const QuadFace = enum {
+    front,
+    back,
+    left,
+    right,
+    top,
+    bottom,
+
+    fn asVertices(self: QuadFace) struct { vertices: [4]mesh.Vertex, indices: [6]u8 } {
+        switch (self) {
+            .front => return .{ .vertices = .{
+                .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
+                .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
+                .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
+                .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
+            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
+            .back => return .{ .vertices = .{
+                .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
+                .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
+                .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
+                .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
+            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
+            .left => return .{ .vertices = .{
+                .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+                .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+                .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+                .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
+            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
+            .right => return .{ .vertices = .{
+                .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 1.0, 0.0, 1.0 } },
+                .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 1.0, 0.0, 1.0 } },
+                .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 0.0, 1.0 } },
+                .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 0.0, 1.0 } },
+            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
+            .top => return .{ .vertices = .{
+                .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 1.0 } },
+                .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 1.0 } },
+                .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 1.0 } },
+                .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 1.0 } },
+            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
+            .bottom => return .{ .vertices = .{
+                .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 1.0, 1.0, 0.0 } },
+                .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 1.0, 0.0 } },
+                .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 1.0, 0.0 } },
+                .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 1.0, 1.0, 0.0 } },
+            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
+        }
+    }
+};
+
 pub fn main() !void {
     glfw.setErrorCallback(logGLFWError);
 
@@ -125,16 +175,9 @@ pub fn main() !void {
     var program = try shader.Program.create(arena_allocator, "res/shader.vert.glsl", "res/shader.frag.glsl");
     defer program.destroy();
 
-    // zig fmt: off
-    const vertices = [4]mesh.Vertex {
-        .{ .position = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 }},
-        .{ .position = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 }},
-        .{ .position = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 }},
-        .{ .position = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 0.0, 1.0 }},
-    };
-    // zig fmt: on
-    const indices = [6]u8{ 0, 1, 3, 1, 2, 3 };
-    var quad = try mesh.Mesh.init(&program, &vertices, &indices);
+    const quadFace = QuadFace.left.asVertices();
+    var quad = try mesh.Mesh.init(&program, &quadFace.vertices, &quadFace.indices);
+    defer quad.deinit();
 
     main_loop: while (true) {
         glfw.pollEvents();
