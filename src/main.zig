@@ -4,6 +4,7 @@ const gl = @import("gl");
 const zm = @import("zmath");
 
 const camera = @import("camera.zig");
+const mesh = @import("mesh.zig");
 const shader = @import("shader.zig");
 const utils = @import("utils.zig");
 
@@ -14,31 +15,12 @@ fn logGLFWError(error_code: glfw.ErrorCode, description: [:0]const u8) void {
     glfw_log.err("{}: {s}\n", .{ error_code, description });
 }
 
-/// Procedure table that will hold loaded OpenGL functions.
 var gl_procs: gl.ProcTable = undefined;
 
 var world_camera = camera.Camera.create(zm.loadArr3(.{ 0.0, 0.0, 5.0 }));
 var lastX: f64 = 0.0;
 var lastY: f64 = 0.0;
 var first_mouse = true;
-
-const Vertex = struct {
-    position: [3]f32,
-    color: [3]f32,
-};
-
-const quad_mesh = struct {
-    // zig fmt: off
-    const vertices = [4]Vertex{
-        .{ .position = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
-        .{ .position = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
-        .{ .position = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
-        .{ .position = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 0.0, 1.0 } },
-    };
-    // zig fmt: on
-
-    const indices = [6]u8{ 0, 1, 3, 1, 2, 3 };
-};
 
 var delta_time: f32 = 0.0;
 var last_frame: f32 = 0.0;
@@ -101,7 +83,6 @@ pub fn main() !void {
     }
     defer glfw.terminate();
 
-    // Create our window, specifying that we want to use OpenGL.
     const window: glfw.Window = glfw.Window.create(1280, 720, "zigxel", null, null, .{
         .context_version_major = gl.info.version_major,
         .context_version_minor = gl.info.version_minor,
@@ -113,7 +94,6 @@ pub fn main() !void {
     };
     defer window.destroy();
 
-    // Make the window's OpenGL context current.
     glfw.makeContextCurrent(window);
     defer glfw.makeContextCurrent(null);
 
@@ -122,20 +102,15 @@ pub fn main() !void {
     glfw.Window.setCursorPosCallback(window, mouseCallback);
     glfw.Window.setScrollCallback(window, mouseScrollCallback);
 
-    // Enable VSync to avoid drawing more often than necessary.
     glfw.swapInterval(1);
 
-    // Initialize the OpenGL procedure table.
     if (!gl_procs.init(glfw.getProcAddress)) {
         gl_log.err("failed to load OpenGL functions", .{});
         return error.GLInitFailed;
     }
 
-    // Make the OpenGL procedure table current.
     gl.makeProcTableCurrent(&gl_procs);
     defer gl.makeProcTableCurrent(null);
-
-    // The window and OpenGL are now both fully initialized.
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -146,58 +121,20 @@ pub fn main() !void {
     var program = try shader.Program.create(arena_allocator, "res/shader.vert.glsl", "res/shader.frag.glsl");
     defer program.destroy();
 
-    // Vertex Array Object (VAO), remembers instructions for how vertex data is laid out in memory.
-    // Using VAOs is strictly required in modern OpenGL.
-    var vao: c_uint = undefined;
-    gl.GenVertexArrays(1, (&vao)[0..1]);
-    defer gl.DeleteVertexArrays(1, (&vao)[0..1]);
-
-    // Vertex Buffer Object (VBO), holds vertex data.
-    var vbo: c_uint = undefined;
-    gl.GenBuffers(1, (&vbo)[0..1]);
-    defer gl.DeleteBuffers(1, (&vbo)[0..1]);
-
-    // Index Buffer Object (IBO), maps indices to vertices (to enable reusing vertices).
-    var ibo: c_uint = undefined;
-    gl.GenBuffers(1, (&ibo)[0..1]);
-    defer gl.DeleteBuffers(1, (&ibo)[0..1]);
-
-    {
-        // Make our VAO the current global VAO, but unbind it when we're done so we don't end up
-        // inadvertently modifying it later.
-        gl.BindVertexArray(vao);
-        defer gl.BindVertexArray(0);
-
-        {
-            // Make our VBO the current global VBO and unbind it when we're done.
-            gl.BindBuffer(gl.ARRAY_BUFFER, vbo);
-            defer gl.BindBuffer(gl.ARRAY_BUFFER, 0);
-
-            // Upload vertex data to the VBO.
-            gl.BufferData(
-                gl.ARRAY_BUFFER,
-                @sizeOf(@TypeOf(quad_mesh.vertices)),
-                &quad_mesh.vertices,
-                gl.STATIC_DRAW,
-            );
-
-            try program.enable_vertex_attrib_pointers(Vertex);
-        }
-
-        // Instruct the VAO to use our IBO, then upload index data to the IBO.
-        gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-        gl.BufferData(
-            gl.ELEMENT_ARRAY_BUFFER,
-            @sizeOf(@TypeOf(quad_mesh.indices)),
-            &quad_mesh.indices,
-            gl.STATIC_DRAW,
-        );
-    }
+    // zig fmt: off
+    const vertices = [4]mesh.Vertex {
+        .{ .position = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 }},
+        .{ .position = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 }},
+        .{ .position = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 }},
+        .{ .position = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 0.0, 1.0 }},
+    };
+    // zig fmt: on
+    const indices = [6]u8{ 0, 1, 3, 1, 2, 3 };
+    var quad = try mesh.Mesh.init(&program, &vertices, &indices);
 
     main_loop: while (true) {
         glfw.pollEvents();
 
-        // Exit the main loop if the user is trying to close the window.
         if (window.shouldClose()) break :main_loop;
 
         {
@@ -207,7 +144,6 @@ pub fn main() !void {
 
             processInput(window);
 
-            // Clear the screen to white.
             gl.ClearColor(0.2, 0.2, 0.2, 1.0);
             gl.Clear(gl.COLOR_BUFFER_BIT);
 
@@ -227,11 +163,7 @@ pub fn main() !void {
             const model_matrix = zm.identity();
             try program.setMat4f("model", model_matrix);
 
-            gl.BindVertexArray(vao);
-            defer gl.BindVertexArray(0);
-
-            // Draw the hexagon!
-            gl.DrawElements(gl.TRIANGLES, quad_mesh.indices.len, gl.UNSIGNED_BYTE, 0);
+            quad.draw();
         }
 
         window.swapBuffers();
