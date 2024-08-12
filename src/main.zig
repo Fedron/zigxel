@@ -4,7 +4,9 @@ const gl = @import("gl");
 const zm = @import("zmath");
 
 const camera = @import("camera.zig");
+const chunk = @import("chunk.zig");
 const mesh = @import("mesh.zig");
+const QuadFace = @import("quad.zig").QuadFace;
 const shader = @import("shader.zig");
 const utils = @import("utils.zig");
 
@@ -80,56 +82,6 @@ fn framebufferSizeCallback(window: glfw.Window, width: u32, height: u32) void {
     gl.Viewport(0, 0, @intCast(width), @intCast(height));
 }
 
-const QuadFace = enum {
-    front,
-    back,
-    left,
-    right,
-    top,
-    bottom,
-
-    fn asVertices(self: QuadFace) struct { vertices: [4]mesh.Vertex, indices: [6]u8 } {
-        switch (self) {
-            .front => return .{ .vertices = .{
-                .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
-                .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
-                .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
-                .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 1.0, 0.0, 0.0 } },
-            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
-            .back => return .{ .vertices = .{
-                .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
-                .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
-                .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
-                .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 0.0, 1.0, 0.0 } },
-            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
-            .left => return .{ .vertices = .{
-                .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
-                .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
-                .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
-                .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 0.0, 0.0, 1.0 } },
-            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
-            .right => return .{ .vertices = .{
-                .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 1.0, 0.0, 1.0 } },
-                .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 1.0, 0.0, 1.0 } },
-                .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 0.0, 1.0 } },
-                .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 0.0, 1.0 } },
-            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
-            .top => return .{ .vertices = .{
-                .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 1.0 } },
-                .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 1.0 } },
-                .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 1.0 } },
-                .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 1.0 } },
-            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
-            .bottom => return .{ .vertices = .{
-                .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 1.0, 1.0, 0.0 } },
-                .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 1.0, 0.0 } },
-                .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 1.0, 0.0 } },
-                .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 1.0, 1.0, 0.0 } },
-            }, .indices = .{ 0, 1, 3, 1, 2, 3 } },
-        }
-    }
-};
-
 pub fn main() !void {
     glfw.setErrorCallback(logGLFWError);
 
@@ -181,9 +133,11 @@ pub fn main() !void {
     var program = try shader.Program.create(arena_allocator, "res/shader.vert.glsl", "res/shader.frag.glsl");
     defer program.destroy();
 
-    const quadFace = QuadFace.top.asVertices();
-    var quad = try mesh.Mesh.init(&program, &quadFace.vertices, &quadFace.indices);
-    defer quad.deinit();
+    var world = chunk.Chunk.init(0, 0);
+    world.set_voxel(0, 0, 0, chunk.Voxel.grass);
+
+    var world_mesh = try world.init_mesh(&program, arena_allocator);
+    defer world_mesh.deinit();
 
     main_loop: while (true) {
         glfw.pollEvents();
@@ -216,7 +170,7 @@ pub fn main() !void {
             const model_matrix = zm.identity();
             try program.setMat4f("model", model_matrix);
 
-            quad.draw();
+            world_mesh.draw();
         }
 
         window.swapBuffers();

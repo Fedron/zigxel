@@ -13,3 +13,15 @@ pub fn clamp(comptime T: type, value: T, min: T, max: T) T {
     if (value < min) return min;
     return value;
 }
+
+pub fn coords_to_index(coords: zm.F32x4, size: zm.F32x4) usize {
+    return @intFromFloat(coords[0] + coords[1] * size[0] + coords[2] * size[0] * size[1]);
+}
+
+pub fn index_to_coords(index: usize, size: zm.F32x4) zm.F32x4 {
+    var coords = zm.f32x4s(0);
+    coords[0] = @mod(@as(f32, @floatFromInt(index)), size[0]);
+    coords[1] = @mod((@as(f32, @floatFromInt(index)) / size[0]), size[1]);
+    coords[2] = @as(f32, @floatFromInt(index)) / (size[1] * size[1]);
+    return coords;
+}
