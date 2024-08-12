@@ -8,29 +8,28 @@ const utils = @import("utils.zig");
 
 pub const Voxel = enum { air, grass };
 
-pub const CHUNK_SIZE = zm.f32x4s(16);
-const TOTAL_CHUNK_VOLUME = CHUNK_SIZE[0] * CHUNK_SIZE[1] * CHUNK_SIZE[2];
+pub const CHUNK_SIZE = utils.IVec3{ .x = 16, .y = 16, .z = 16 };
+const TOTAL_CHUNK_VOLUME = CHUNK_SIZE.x * CHUNK_SIZE.y * CHUNK_SIZE.z;
 
 pub const Chunk = struct {
-    world_x: i32,
-    world_y: i32,
+    world_position: utils.IVec3,
     voxels: [TOTAL_CHUNK_VOLUME]Voxel,
 
-    pub fn init(x: i32, y: i32) Chunk {
-        return Chunk{ .world_x = x, .world_y = y, .voxels = [_]Voxel{Voxel.air} ** TOTAL_CHUNK_VOLUME };
+    pub fn init(world_position: utils.IVec3) Chunk {
+        return Chunk{ .world_position = world_position, .voxels = [_]Voxel{Voxel.air} ** TOTAL_CHUNK_VOLUME };
     }
 
-    pub fn get_voxel(self: *Chunk, local_x: i32, local_y: i32, local_z: i32) ?Voxel {
-        if (local_x < 0 or local_x >= CHUNK_SIZE[0] or local_y < 0 or local_y >= CHUNK_SIZE[1] or local_z < 0 or local_z >= CHUNK_SIZE[1]) {
+    pub fn get_voxel(self: *Chunk, local_position: utils.IVec3) ?Voxel {
+        if (local_position.x < 0 or local_position.x >= CHUNK_SIZE.x or local_position.y < 0 or local_position.y >= CHUNK_SIZE.y or local_position.z < 0 or local_position.z >= CHUNK_SIZE.z) {
             return null;
         }
 
-        return self.voxels[utils.coords_to_index(zm.f32x4(@floatFromInt(local_x), @floatFromInt(local_y), @floatFromInt(local_z), 0.0), CHUNK_SIZE)];
+        return self.voxels[utils.coords_to_index(local_position, CHUNK_SIZE)];
     }
 
-    pub fn set_voxel(self: *Chunk, local_x: i32, local_y: i32, local_z: i32, voxel: Voxel) void {
+    pub fn set_voxel(self: *Chunk, local_position: utils.IVec3, voxel: Voxel) void {
         self.voxels[
-            utils.coords_to_index(zm.f32x4(@floatFromInt(local_x), @floatFromInt(local_y), @floatFromInt(local_z), 0.0), CHUNK_SIZE)
+            utils.coords_to_index(local_position, CHUNK_SIZE)
         ] = voxel;
     }
 
@@ -47,43 +46,42 @@ pub const Chunk = struct {
             }
 
             const coords = utils.index_to_coords(i, CHUNK_SIZE);
-            const x: i32 = @intFromFloat(coords[0]);
-            const y: i32 = @intFromFloat(coords[1]);
-            const z: i32 = @intFromFloat(coords[2]);
+            const x = coords.x;
+            const y = coords.y;
+            const z = coords.z;
 
-            // TODO: consider if voxel is null?
-            if (self.get_voxel(x, y + 1, z) == Voxel.air) {
-                const face = QuadFace.top.asMeshInfo(@intCast(vertices.items.len));
+            if (self.get_voxel(.{ .x = x, .y = y + 1, .z = z }) == Voxel.air) {
+                const face = QuadFace.top.asMeshInfo(coords, @intCast(vertices.items.len));
                 try vertices.appendSlice(&face.vertices);
                 try indices.appendSlice(&face.indices);
             }
 
-            if (self.get_voxel(x, y - 1, z) == Voxel.air) {
-                const face = QuadFace.bottom.asMeshInfo(@intCast(vertices.items.len));
+            if (self.get_voxel(.{ .x = x, .y = y - 1, .z = z }) == Voxel.air) {
+                const face = QuadFace.bottom.asMeshInfo(coords, @intCast(vertices.items.len));
                 try vertices.appendSlice(&face.vertices);
                 try indices.appendSlice(&face.indices);
             }
 
-            if (self.get_voxel(x + 1, y, z) == Voxel.air) {
-                const face = QuadFace.right.asMeshInfo(@intCast(vertices.items.len));
+            if (self.get_voxel(.{ .x = x + 1, .y = y, .z = z }) == Voxel.air) {
+                const face = QuadFace.right.asMeshInfo(coords, @intCast(vertices.items.len));
                 try vertices.appendSlice(&face.vertices);
                 try indices.appendSlice(&face.indices);
             }
 
-            if (self.get_voxel(x - 1, y, z) == Voxel.air) {
-                const face = QuadFace.left.asMeshInfo(@intCast(vertices.items.len));
+            if (self.get_voxel(.{ .x = x - 1, .y = y, .z = z }) == Voxel.air) {
+                const face = QuadFace.left.asMeshInfo(coords, @intCast(vertices.items.len));
                 try vertices.appendSlice(&face.vertices);
                 try indices.appendSlice(&face.indices);
             }
 
-            if (self.get_voxel(x, y, z + 1) == Voxel.air) {
-                const face = QuadFace.front.asMeshInfo(@intCast(vertices.items.len));
+            if (self.get_voxel(.{ .x = x, .y = y, .z = z + 1 }) == Voxel.air) {
+                const face = QuadFace.front.asMeshInfo(coords, @intCast(vertices.items.len));
                 try vertices.appendSlice(&face.vertices);
                 try indices.appendSlice(&face.indices);
             }
 
-            if (self.get_voxel(x, y, z - 1) == Voxel.air) {
-                const face = QuadFace.back.asMeshInfo(@intCast(vertices.items.len));
+            if (self.get_voxel(.{ .x = x, .y = y, .z = z - 1 }) == Voxel.air) {
+                const face = QuadFace.back.asMeshInfo(coords, @intCast(vertices.items.len));
                 try vertices.appendSlice(&face.vertices);
                 try indices.appendSlice(&face.indices);
             }

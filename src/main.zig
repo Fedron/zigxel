@@ -2,7 +2,6 @@ const std = @import("std");
 const glfw = @import("mach-glfw");
 const gl = @import("gl");
 const zm = @import("zmath");
-const znoise = @import("znoise");
 
 const camera = @import("camera.zig");
 const chunk = @import("chunk.zig");
@@ -84,12 +83,6 @@ fn framebufferSizeCallback(window: glfw.Window, width: u32, height: u32) void {
 }
 
 pub fn main() !void {
-    {
-        const gen = znoise.FnlGenerator{};
-        const n3 = gen.noise3(1.0, 2.0, 3.0);
-        std.debug.print("{d}", .{n3});
-    }
-
     glfw.setErrorCallback(logGLFWError);
 
     if (!glfw.init(.{})) {
@@ -140,8 +133,9 @@ pub fn main() !void {
     var program = try shader.Program.create(arena_allocator, "res/shader.vert.glsl", "res/shader.frag.glsl");
     defer program.destroy();
 
-    var world = chunk.Chunk.init(0, 0);
-    world.set_voxel(0, 0, 0, chunk.Voxel.grass);
+    var world = chunk.Chunk.init(.{ .x = 0, .y = 0, .z = 0 });
+    world.set_voxel(.{ .x = 0, .y = 0, .z = 0 }, chunk.Voxel.grass);
+    world.set_voxel(.{ .x = 1, .y = 1, .z = 1 }, chunk.Voxel.grass);
 
     var world_mesh = try world.init_mesh(&program, arena_allocator);
     defer world_mesh.deinit();
