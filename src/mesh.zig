@@ -12,7 +12,7 @@ pub const Mesh = struct {
     ebo: c_uint,
     num_indices: c_int,
 
-    pub fn init(shader: *Shader, vertices: []const Vertex, indices: []const u8) !Mesh {
+    pub fn init(shader: *Shader, vertices: []const Vertex, indices: []const u32) !Mesh {
         var vao: c_uint = undefined;
         gl.GenVertexArrays(1, (&vao)[0..1]);
 
@@ -38,7 +38,7 @@ pub const Mesh = struct {
         try shader.enable_vertex_attrib_pointers(Vertex);
 
         gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
-        gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, @as(isize, @intCast(@sizeOf(u8) * indices.len)), indices.ptr, gl.STATIC_DRAW);
+        gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, @as(isize, @intCast(@sizeOf(u32) * indices.len)), indices.ptr, gl.STATIC_DRAW);
 
         return Mesh{ .vao = vao, .vbo = vbo, .ebo = ebo, .num_indices = @intCast(indices.len) };
     }
@@ -53,6 +53,6 @@ pub const Mesh = struct {
         gl.BindVertexArray(self.vao);
         defer gl.BindVertexArray(0);
 
-        gl.DrawElements(gl.TRIANGLES, self.num_indices, gl.UNSIGNED_BYTE, 0);
+        gl.DrawElements(gl.TRIANGLES, self.num_indices, gl.UNSIGNED_INT, 0);
     }
 };

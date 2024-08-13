@@ -4,8 +4,8 @@ const utils = @import("utils.zig");
 
 pub const MovementDirection = enum { forward, backward, left, right, up, down };
 
-const MOVEMENT_SPEED = 2.5;
-const MOUSE_SENSITIVITY = 0.1;
+const MOVEMENT_SPEED = 10.0;
+const MOUSE_SENSITIVITY = 0.2;
 
 pub const Camera = struct {
     position: zm.F32x4,

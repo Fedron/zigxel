@@ -19,7 +19,7 @@ fn logGLFWError(error_code: glfw.ErrorCode, description: [:0]const u8) void {
 
 var gl_procs: gl.ProcTable = undefined;
 
-var world_camera = camera.Camera.create(zm.loadArr3(.{ 0.0, 0.0, 5.0 }));
+var world_camera = camera.Camera.create(zm.loadArr3(.{ 0.0, 8.0, 24.0 }));
 var lastX: f64 = 0.0;
 var lastY: f64 = 0.0;
 var first_mouse = true;

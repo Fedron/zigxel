@@ -9,8 +9,8 @@ pub const QuadFace = enum {
     top,
     bottom,
 
-    pub fn asMeshInfo(self: QuadFace, base_position: IVec3, base_index: u8) struct { vertices: [4]Vertex, indices: [6]u8 } {
-        const indices: [6]u8 = .{ base_index, base_index + 1, base_index + 3, base_index + 1, base_index + 2, base_index + 3 };
+    pub fn asMeshInfo(self: QuadFace, base_position: IVec3, base_index: u32) struct { vertices: [4]Vertex, indices: [6]u32 } {
+        const indices: [6]u32 = .{ base_index, base_index + 1, base_index + 3, base_index + 1, base_index + 2, base_index + 3 };
 
         const x = @as(f32, @floatFromInt(base_position.x));
         const y = @as(f32, @floatFromInt(base_position.y));

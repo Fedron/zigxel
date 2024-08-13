@@ -27,3 +27,7 @@ pub fn index_to_coords(index: usize, size: IVec3) IVec3 {
     coords.z = @divFloor(@as(i32, @intCast(index)), (size.x * size.y));
     return coords;
 }
+
+pub fn remap(value: f32, low1: f32, high1: f32, low2: f32, high2: f32) f32 {
+    return low2 + (value - low1) * (high2 - low2) / (high1 - low1);
+}

@@ -1,5 +1,6 @@
 const std = @import("std");
 const zm = @import("zmath");
+const znoise = @import("znoise");
 
 const mesh = @import("mesh.zig");
 const QuadFace = @import("quad.zig").QuadFace;
@@ -16,7 +17,27 @@ pub const Chunk = struct {
     voxels: [TOTAL_CHUNK_VOLUME]Voxel,
 
     pub fn init(world_position: utils.IVec3) Chunk {
-        return Chunk{ .world_position = world_position, .voxels = [_]Voxel{Voxel.air} ** TOTAL_CHUNK_VOLUME };
+        var chunk = Chunk{ .world_position = world_position, .voxels = [_]Voxel{Voxel.air} ** TOTAL_CHUNK_VOLUME };
+
+        for (0..CHUNK_SIZE.x) |x| {
+            for (0..CHUNK_SIZE.z) |z| {
+                const gen = znoise.FnlGenerator{};
+                const height = gen.noise3(@floatFromInt(x), 0.0, @floatFromInt(z));
+                const scaled_height: usize = @intFromFloat(utils.remap(height, -1.0, 1.0, 0.0, CHUNK_SIZE.y));
+                for (0..CHUNK_SIZE.y) |y| {
+                    const voxel = v: {
+                        if (y < scaled_height) {
+                            break :v Voxel.grass;
+                        }
+
+                        break :v Voxel.air;
+                    };
+                    chunk.set_voxel(.{ .x = @intCast(x), .y = @intCast(y), .z = @intCast(z) }, voxel);
+                }
+            }
+        }
+
+        return chunk;
     }
 
     pub fn get_voxel(self: *Chunk, local_position: utils.IVec3) ?Voxel {
@@ -37,7 +58,7 @@ pub const Chunk = struct {
         var vertices = std.ArrayList(mesh.Vertex).init(allocator);
         defer vertices.deinit();
 
-        var indices = std.ArrayList(u8).init(allocator);
+        var indices = std.ArrayList(u32).init(allocator);
         defer indices.deinit();
 
         for (self.voxels, 0..) |voxel, i| {
